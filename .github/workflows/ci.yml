@@ -121,7 +121,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
         # https://github.com/docker/setup-qemu-action
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64linux/riscv64
       - name: Set up gdal-bin and sqlite3-tools
         run: sudo apt-get update && sudo apt-get install -y gdal-bin sqlite3-tools
       - name: Set up Docker Buildx
@@ -129,7 +129,7 @@ jobs:
         # https://github.com/docker/setup-buildx-action
         with:
           install: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/riscv64
       - name: Set up AWS SAM
         uses: aws-actions/setup-sam@v2
         with:
@@ -158,8 +158,8 @@ jobs:
           path: target_releases/*
       - name: Reorganize artifacts for docker build
         run: |
-          mkdir -p target_releases/linux/arm64
-          mv target_releases/aarch64-unknown-linux-musl/* target_releases/linux/arm64/
+          mkdir -p target_releases/linux/riscv64
+          mv target_releases/riscv64-unknown-linux-musl/* target_releases/linux/riscv64/
           mkdir -p target_releases/linux/amd64
           mv target_releases/x86_64-unknown-linux-musl/* target_releases/linux/amd64/
       - name: Start NGINX
@@ -168,27 +168,15 @@ jobs:
         with: { port: '5412', output-unix-paths: 'yes' }
       - name: Copy static files
         run: cp -r tests/fixtures/pmtiles2/* ${{ steps.nginx.outputs.html-dir }}
-      - name: Build linux/arm64 Docker image
+      - name: Build linux/riscv64 Docker image
         uses: docker/build-push-action@v6
         # https://github.com/docker/build-push-action
         with:
           context: .
           file: .github/files/multi-platform.Dockerfile
           load: true
-          tags: ${{ github.repository }}:linux-arm64
-          platforms: linux/arm64
-
-      - name: Test linux/arm64 Docker image
-        run: |
-          PLATFORM=linux/arm64
-          TAG=${{ github.repository }}:linux-arm64
-          export MARTIN_BUILD_ALL=-
-          export MARTIN_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests $TAG"
-          export MARTIN_CP_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests --entrypoint /usr/local/bin/martin-cp $TAG"
-          export MBTILES_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests --entrypoint /usr/local/bin/mbtiles $TAG"
-          tests/test.sh
-        env:
-          DATABASE_URL: postgres://${{ env.PGUSER }}:${{ env.PGUSER }}@${{ env.PGHOST }}:${{ job.services.postgres.ports[5432] }}/${{ env.PGDATABASE }}?sslmode=require
+          tags: ${{ github.repository }}:linux-riscv64
+          platforms: linux/riscv64
 
       - name: Build linux/amd64 Docker image
         uses: docker/build-push-action@v6
@@ -245,7 +233,7 @@ jobs:
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/riscv64
 
   build:
     name: Build ${{ matrix.target }}
@@ -254,16 +242,9 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            os: macos-latest  # M-series CPU
           - target: debian-x86_64
             os: ubuntu-22.04 # downgraded to have lower libc support. Debian-12 (stable at the time of writing) does not support the same version ubuntu does.
             # TODO: update to ubuntu-latest again once debian 13 launches
-          - target: x86_64-apple-darwin
-            os: macos-13  # x64 CPU
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            ext: '.exe'
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
     steps:
@@ -336,20 +317,9 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          # temporary disabled due to an issue with homebrew which is difficult to debug
-          # - target: x86_64-apple-darwin
-          #   os: macos-13
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            ext: '.exe'
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
     steps:
-      - name: Install and run Postgis (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: nyurik/action-setup-postgis@v2.2
-        id: pg
-        with: { username: 'postgres', password: 'postgres', database: 'test',postgres-version: 16, port: 34837, postgis_version: 3.5.2}
       - name: Install and run Postgis (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -584,16 +554,6 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-      - name: Download build artifact build-aarch64-apple-darwin
-        uses: actions/download-artifact@v4
-        with:
-          name: build-aarch64-apple-darwin
-          path: target/aarch64-apple-darwin
-      - name: Download build artifact build-x86_64-apple-darwin
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64-apple-darwin
-          path: target/x86_64-apple-darwin
       - name: Download build artifact build-x86_64-unknown-linux-gnu
         uses: actions/download-artifact@v4
         with:
@@ -606,11 +566,6 @@ jobs:
           name: cross-build
           path: target/cross
 
-      - name: Download build artifact build-x86_64-pc-windows-msvc
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64-pc-windows-msvc
-          path: target/x86_64-pc-windows-msvc
       - name: Download build artifact build-debian-x86_64
         uses: actions/download-artifact@v4
         with:
@@ -624,16 +579,6 @@ jobs:
           cd target
           mkdir files
           mv cross/* .
-
-          cd aarch64-apple-darwin
-          chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-aarch64-apple-darwin.tar.gz martin martin-cp mbtiles
-          cd ..
-
-          cd x86_64-apple-darwin
-          chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-x86_64-apple-darwin.tar.gz martin martin-cp mbtiles
-          cd ..
 
           cd x86_64-unknown-linux-gnu
           chmod +x martin martin-cp mbtiles
@@ -651,42 +596,11 @@ jobs:
           cd ..
 
           #
-          # Special case for Windows
-          #
-          cd x86_64-pc-windows-msvc
-          7z a ../files/martin-x86_64-pc-windows-msvc.zip martin.exe martin-cp.exe mbtiles.exe
-          cd ..
-
-          #
           # Special case for Debian .deb package
           #
           cd debian-x86_64
           mv debian-x86_64.deb ../files/martin-Debian-x86_64.deb
           cd ..
-
-      - name: Create Homebrew config
-        run: |
-          set -x
-
-          # Extract Github release version only without the "v" prefix
-          MARTIN_VERSION=$(echo "${{ github.ref }}" | sed -e 's/refs\/tags\/v//')
-
-          mkdir -p target/homebrew
-          cd target
-
-          cat << EOF > homebrew_config.yaml
-          version: "$MARTIN_VERSION"
-          macos_arm_sha256: "$(shasum -a 256 files/martin-aarch64-apple-darwin.tar.gz | cut -d' ' -f1)"
-          macos_intel_sha256: "$(shasum -a 256 files/martin-x86_64-apple-darwin.tar.gz | cut -d' ' -f1)"
-          linux_arm_sha256: "$(shasum -a 256 files/martin-aarch64-unknown-linux-musl.tar.gz | cut -d' ' -f1)"
-          linux_intel_sha256: "$(shasum -a 256 files/martin-x86_64-unknown-linux-musl.tar.gz | cut -d' ' -f1)"
-          EOF
-
-      - name: Save Homebrew Config
-        uses: actions/upload-artifact@v4
-        with:
-          name: homebrew-config
-          path: target/homebrew_config.yaml
 
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/')
