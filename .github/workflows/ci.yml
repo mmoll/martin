@@ -87,7 +87,7 @@ jobs:
             # TODO: Remove this once a version after cross 0.2.5 is released
             export CROSS_BUILD_OPTS="--output=type=docker"
             export "CARGO_TARGET_$(echo $target | tr 'a-z-' 'A-Z_')_RUSTFLAGS"='-C strip=debuginfo'
-            cargo install --force --locked bindgen-cli
+            cargo install --force --locked --target riscv64gc-unknown-linux-musl bindgen-cli
             export PATH="/root/.cargo/bin:$PATH"
             cross build --release --target $target --workspace
             mkdir -p target_releases/$target
