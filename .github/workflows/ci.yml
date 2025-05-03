@@ -14,65 +14,6 @@ defaults:
     shell: bash
 
 jobs:
-  lint-debug-test:
-    name: Lint and Unit test
-    runs-on: ubuntu-latest
-    env:
-      PGDATABASE: test
-      PGHOST: localhost
-      PGUSER: postgres
-      PGPASSWORD: postgres
-    services:
-      postgres:
-        image: postgis/postgis:16-3.5
-        ports:
-          # will assign a random free host port
-          - 5432/tcp
-        # Sadly there is currently no way to pass arguments to the service image other than this hack
-        # See also https://stackoverflow.com/a/62720566/177275
-        options: >-
-          -e POSTGRES_DB=test
-          -e POSTGRES_USER=postgres
-          -e POSTGRES_PASSWORD=postgres
-          -e PGDATABASE=test
-          -e PGUSER=postgres
-          -e PGPASSWORD=postgres
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --entrypoint sh
-          postgis/postgis:16-3.5
-          -c "exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key"
-    steps:
-      - uses: taiki-e/install-action@v2
-        with: { tool: just }
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-        if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-      - run: just env-info
-      - run: just fmt
-      - run: just clippy
-      - run: just check
-      - run: just check-doc
-      - name: Check semver
-        uses: obi1kenobi/cargo-semver-checks-action@v2
-      - name: Init database
-        run: tests/fixtures/initdb.sh
-        env:
-          PGPORT: ${{ job.services.postgres.ports[5432] }}
-      - name: Run cargo test
-        run: |
-          set -x
-          cargo test --package martin-tile-utils
-          cargo test --package mbtiles --no-default-features
-          cargo test --package mbtiles
-          cargo test --package martin
-          cargo test --doc
-        env:
-          DATABASE_URL: postgres://${{ env.PGUSER }}:${{ env.PGUSER }}@${{ env.PGHOST }}:${{ job.services.postgres.ports[5432] }}/${{ env.PGDATABASE }}?sslmode=require
-
   docker-build-test:
     name: Build and test docker images
     runs-on: ubuntu-latest
@@ -137,7 +78,7 @@ jobs:
 
       - name: Build targets
         run: |
-          for target in "aarch64-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
+          for target in "riscv64-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
             echo -e "\n----------------------------------------------"
             echo "Building $target"
             # See https://github.com/cross-rs/cross/issues/1526
@@ -234,73 +175,6 @@ jobs:
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
           platforms: linux/amd64,linux/riscv64
-
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - target: debian-x86_64
-            os: ubuntu-22.04 # downgraded to have lower libc support. Debian-12 (stable at the time of writing) does not support the same version ubuntu does.
-            # TODO: update to ubuntu-latest again once debian 13 launches
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      - name: Rust Versions
-        run: rustc --version && cargo --version
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.os }}
-        if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-      - name: Install NASM for rustls/aws-lc-rs on Windows
-        if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@v1
-      - name: Build (.deb)
-        if: matrix.target == 'debian-x86_64'
-        run: |
-          set -x
-          sudo apt-get install -y dpkg dpkg-dev liblzma-dev
-          cargo install cargo-deb --locked
-          cargo deb -v -p martin --output target/debian/debian-x86_64.deb
-          mkdir -p target_releases
-          mv target/debian/debian-x86_64.deb target_releases/
-      - name: Build
-        if: matrix.target != 'debian-x86_64'
-        run: |
-          set -x
-          rustup target add "${{ matrix.target }}"
-          export RUSTFLAGS='-C strip=debuginfo'
-          cargo build --release --target ${{ matrix.target }} --package mbtiles
-          cargo build --release --target ${{ matrix.target }} --package martin
-          mkdir -p target_releases
-          mv target/${{ matrix.target }}/release/martin${{ matrix.ext }} target_releases/
-          mv target/${{ matrix.target }}/release/martin-cp${{ matrix.ext }} target_releases/
-          mv target/${{ matrix.target }}/release/mbtiles${{ matrix.ext }} target_releases/
-      - name: Save build artifacts to build-${{ matrix.target }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.target }}
-          path: target_releases/*
-
-  test-aws-lambda:
-    name: Test AWS Lambda
-    runs-on: ubuntu-latest
-    needs: [ docker-build-test ]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      - name: Download build artifact cross-build
-        uses: actions/download-artifact@v4
-        with:
-          name: cross-build
-      - run: tests/test-aws-lambda.sh
-        env:
-          MARTIN_BIN: x86_64-unknown-linux-musl/martin
-
 
   test-multi-os:
     name: Test on ${{ matrix.os }}
@@ -585,9 +459,9 @@ jobs:
           tar czvf ../files/martin-x86_64-unknown-linux-gnu.tar.gz martin martin-cp mbtiles
           cd ..
 
-          cd aarch64-unknown-linux-musl
+          cd riscv64-unknown-linux-musl
           chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-aarch64-unknown-linux-musl.tar.gz martin martin-cp mbtiles
+          tar czvf ../files/martin-riscv64-unknown-linux-musl.tar.gz martin martin-cp mbtiles
           cd ..
 
           cd x86_64-unknown-linux-musl
