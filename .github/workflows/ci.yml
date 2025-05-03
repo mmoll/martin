@@ -16,7 +16,7 @@ defaults:
 jobs:
   docker-build-test:
     name: Build and test docker images
-    runs-on: ubuntu-latest
+    runs-on: riscv-builders
     env:
       # PG_* variables are used by psql
       PGDATABASE: test
@@ -58,11 +58,11 @@ jobs:
         env:
           PGPORT: ${{ job.services.postgres.ports[5432] }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        # https://github.com/docker/setup-qemu-action
-        with:
-          platforms: linux/amd64,linux/riscv64
+#      - name: Set up QEMU
+#        uses: docker/setup-qemu-action@v3
+#        # https://github.com/docker/setup-qemu-action
+#        with:
+#          platforms: linux/amd64,linux/riscv64
       - name: Set up gdal-bin and sqlite3-tools
         run: sudo apt-get update && sudo apt-get install -y gdal-bin sqlite3-tools
       - name: Set up Docker Buildx
@@ -70,7 +70,7 @@ jobs:
         # https://github.com/docker/setup-buildx-action
         with:
           install: true
-          platforms: linux/amd64,linux/riscv64
+          platforms: linux/riscv64
       - name: Set up AWS SAM
         uses: aws-actions/setup-sam@v2
         with:
@@ -78,16 +78,13 @@ jobs:
 
       - name: Build targets
         run: |
-          sudo apt -q update && sudo apt -q -y install libc6-dev-riscv64-cross
-          for target in "riscv64gc-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
+          for target in "riscv64gc-unknown-linux-musl"; do
             echo -e "\n----------------------------------------------"
             echo "Building $target"
-            rustup target add riscv64gc-unknown-linux-musl
             # See https://github.com/cross-rs/cross/issues/1526
             # TODO: Remove this once a version after cross 0.2.5 is released
             export CROSS_BUILD_OPTS="--output=type=docker"
             export "CARGO_TARGET_$(echo $target | tr 'a-z-' 'A-Z_')_RUSTFLAGS"='-C strip=debuginfo'
-            cargo install --force --locked --target riscv64gc-unknown-linux-musl bindgen-cli
             export PATH="/root/.cargo/bin:$PATH"
             cross build --release --target $target --workspace
             mkdir -p target_releases/$target
@@ -103,10 +100,8 @@ jobs:
           path: target_releases/*
       - name: Reorganize artifacts for docker build
         run: |
-          mkdir -p target_releases/linux/riscv64gc
+          mkdir -p target_releases/linux/riscv64
           mv target_releases/riscv64gc-unknown-linux-musl/* target_releases/linux/riscv64/
-          mkdir -p target_releases/linux/amd64
-          mv target_releases/x86_64-unknown-linux-musl/* target_releases/linux/amd64/
       - name: Start NGINX
         uses: nyurik/action-setup-nginx@v1.1
         id: nginx
@@ -122,27 +117,6 @@ jobs:
           load: true
           tags: ${{ github.repository }}:linux-riscv64
           platforms: linux/riscv64
-
-      - name: Build linux/amd64 Docker image
-        uses: docker/build-push-action@v6
-        # https://github.com/docker/build-push-action
-        with:
-          context: .
-          file: .github/files/multi-platform.Dockerfile
-          load: true
-          tags: ${{ github.repository }}:linux-amd64
-          platforms: linux/amd64
-      - name: Test linux/amd64 Docker image
-        run: |
-          PLATFORM=linux/amd64
-          TAG=${{ github.repository }}:linux-amd64
-          export MARTIN_BUILD_ALL=-
-          export MARTIN_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests $TAG"
-          export MARTIN_CP_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests --entrypoint /usr/local/bin/martin-cp $TAG"
-          export MBTILES_BIN="docker run --rm --net host --platform $PLATFORM -e DATABASE_URL -v $PWD/tests:/tests --entrypoint /usr/local/bin/mbtiles $TAG"
-          tests/test.sh
-        env:
-          DATABASE_URL: postgres://${{ env.PGUSER }}:${{ env.PGUSER }}@${{ env.PGHOST }}:${{ job.services.postgres.ports[5432] }}/${{ env.PGDATABASE }}?sslmode=require
 
       - name: Save test output (on error)
         if: failure()
@@ -187,23 +161,12 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-      - name: Download build artifact build-x86_64-unknown-linux-gnu
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64-unknown-linux-gnu
-          path: target/x86_64-unknown-linux-gnu
 
       - name: Download cross-build artifacts
         uses: actions/download-artifact@v4
         with:
           name: cross-build
           path: target/cross
-
-      - name: Download build artifact build-debian-x86_64
-        uses: actions/download-artifact@v4
-        with:
-          name: build-debian-x86_64
-          path: target/debian-x86_64
 
       - name: Package
         run: |
@@ -213,26 +176,9 @@ jobs:
           mkdir files
           mv cross/* .
 
-          cd x86_64-unknown-linux-gnu
-          chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-x86_64-unknown-linux-gnu.tar.gz martin martin-cp mbtiles
-          cd ..
-
           cd riscv64gc-unknown-linux-musl
           chmod +x martin martin-cp mbtiles
           tar czvf ../files/martin-riscv64gc-unknown-linux-musl.tar.gz martin martin-cp mbtiles
-          cd ..
-
-          cd x86_64-unknown-linux-musl
-          chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-x86_64-unknown-linux-musl.tar.gz martin martin-cp mbtiles
-          cd ..
-
-          #
-          # Special case for Debian .deb package
-          #
-          cd debian-x86_64
-          mv debian-x86_64.deb ../files/martin-Debian-x86_64.deb
           cd ..
 
       - name: Publish
