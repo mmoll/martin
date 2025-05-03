@@ -78,7 +78,7 @@ jobs:
 
       - name: Build targets
         run: |
-          apt -q update && apt -q -y install libc6-dev-riscv64-cross
+          sudo apt -q update && sudo apt -q -y install libc6-dev-riscv64-cross
           for target in "riscv64gc-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
             echo -e "\n----------------------------------------------"
             echo "Building $target"
