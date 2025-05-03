@@ -78,7 +78,7 @@ jobs:
 
       - name: Build targets
         run: |
-          for target in "riscv64-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
+          for target in "riscv64gc-unknown-linux-musl" "x86_64-unknown-linux-musl"; do
             echo -e "\n----------------------------------------------"
             echo "Building $target"
             # See https://github.com/cross-rs/cross/issues/1526
@@ -99,8 +99,8 @@ jobs:
           path: target_releases/*
       - name: Reorganize artifacts for docker build
         run: |
-          mkdir -p target_releases/linux/riscv64
-          mv target_releases/riscv64-unknown-linux-musl/* target_releases/linux/riscv64/
+          mkdir -p target_releases/linux/riscv64gc
+          mv target_releases/riscv64gc-unknown-linux-musl/* target_releases/linux/riscv64/
           mkdir -p target_releases/linux/amd64
           mv target_releases/x86_64-unknown-linux-musl/* target_releases/linux/amd64/
       - name: Start NGINX
@@ -214,9 +214,9 @@ jobs:
           tar czvf ../files/martin-x86_64-unknown-linux-gnu.tar.gz martin martin-cp mbtiles
           cd ..
 
-          cd riscv64-unknown-linux-musl
+          cd riscv64gc-unknown-linux-musl
           chmod +x martin martin-cp mbtiles
-          tar czvf ../files/martin-riscv64-unknown-linux-musl.tar.gz martin martin-cp mbtiles
+          tar czvf ../files/martin-riscv64gc-unknown-linux-musl.tar.gz martin martin-cp mbtiles
           cd ..
 
           cd x86_64-unknown-linux-musl
