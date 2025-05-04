@@ -1,0 +1,8 @@
+FROM alpine:edge
+
+LABEL org.opencontainers.image.description="Blazing fast and lightweight tile server with PostGIS, MBTiles, and PMTiles support"
+COPY shared/* /usr/local/bin
+
+RUN apk add --no-cache libgcc
+HEALTHCHECK CMD wget --spider http://127.0.0.1:3000/health || exit 1
+ENTRYPOINT ["/usr/local/bin/martin"]

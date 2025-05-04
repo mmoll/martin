@@ -1,0 +1,5 @@
+FROM alpine:edge
+
+RUN apk add --no-cache rust cargo cmake make protoc g++ npm clang20-dev
+RUN mkdir /build
+COPY . /build
